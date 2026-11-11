@@ -1,0 +1,47 @@
+{
+  "arrival_heterogeneity": [
+    0.5
+  ],
+  "committed_fraction": [
+    0.5
+  ],
+  "correlation": [
+    "independent"
+  ],
+  "diagram_fallback_width": 0,
+  "diagram_time_limit": 1800.0,
+  "failures_file": "failures.csv",
+  "lambda": 10,
+  "methods": [
+    "proposed"
+  ],
+  "mu": 30,
+  "name": "premium",
+  "output_root": "runs",
+  "pool_multiplier": [
+    100.0
+  ],
+  "processing_max": [
+    25
+  ],
+  "repetitions": 10,
+  "resource_share": [
+    0.25
+  ],
+  "results_file": "results.csv",
+  "run_order": "instance-major",
+  "scenario_counts": [
+    400
+  ],
+  "scenario_mode": "sampled",
+  "seed_base": 36000000,
+  "summary_file": "summary.csv",
+  "target_jobs": [
+    60
+  ],
+  "threads": 1,
+  "time_limit": 1800.0,
+  "weight_max": [
+    10
+  ]
+}

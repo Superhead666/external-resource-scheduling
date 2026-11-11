@@ -1,0 +1,53 @@
+{
+  "arrival_heterogeneity": [
+    0.5
+  ],
+  "committed_fraction": [
+    0.5
+  ],
+  "correlation": [
+    "independent"
+  ],
+  "diagram_fallback_width": 0,
+  "diagram_time_limit": 1800.0,
+  "failures_file": "failures.csv",
+  "instance_results_file": "instance_results.csv",
+  "lambda": 10,
+  "memory_limit_gb": 24.0,
+  "methods": [
+    "component_dense_direct",
+    "component_sparse_direct",
+    "component_dominance_direct",
+    "component_dominance_batched"
+  ],
+  "mu": 30,
+  "name": "component_hierarchy",
+  "output_root": "runs",
+  "pool_multiplier": [
+    100.0
+  ],
+  "processing_max": [
+    25,
+    50
+  ],
+  "repetitions": 10,
+  "resource_share": [
+    0.25
+  ],
+  "results_file": "results.csv",
+  "run_order": "instance-major",
+  "scenario_counts": [
+    100
+  ],
+  "scenario_mode": "sampled",
+  "seed_base": 50000000,
+  "summary_file": "summary.csv",
+  "target_jobs": [
+    10
+  ],
+  "threads": 1,
+  "time_limit": 1800.0,
+  "weight_max": [
+    10
+  ]
+}
