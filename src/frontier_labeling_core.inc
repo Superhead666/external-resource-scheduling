@@ -10,7 +10,6 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
-#include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -233,48 +232,6 @@ private:
     int stamp_ = 1;
 };
 
-class Fenwick2DMinimum {
-public:
-    explicit Fenwick2DMinimum(int size)
-        : side_(size + 2), values_(static_cast<std::size_t>(side_) * side_, INF),
-          stamps_(static_cast<std::size_t>(side_) * side_, 0) {}
-
-    void next_group() { ++stamp_; }
-
-    void update(int first, int second, i64 value) {
-        for (int i = first + 1; i < side_; i += i & -i) {
-            for (int j = second + 1; j < side_; j += j & -j) {
-                std::size_t index = static_cast<std::size_t>(i) * side_ + j;
-                if (stamps_[index] != stamp_) {
-                    stamps_[index] = stamp_;
-                    values_[index] = value;
-                } else {
-                    values_[index] = std::min(values_[index], value);
-                }
-            }
-        }
-    }
-
-    i64 prefix_min(int first, int second) const {
-        i64 result = INF;
-        for (int i = first + 1; i > 0; i -= i & -i) {
-            for (int j = second + 1; j > 0; j -= j & -j) {
-                std::size_t index = static_cast<std::size_t>(i) * side_ + j;
-                if (stamps_[index] == stamp_) {
-                    result = std::min(result, values_[index]);
-                }
-            }
-        }
-        return result;
-    }
-
-private:
-    int side_;
-    std::vector<i64> values_;
-    std::vector<int> stamps_;
-    int stamp_ = 1;
-};
-
 class Fenwick2DCompressedMinimum {
 public:
     explicit Fenwick2DCompressedMinimum(
@@ -472,177 +429,6 @@ std::vector<Descriptor> prune_by_naive_gamma_hull(
         if (active[i]) result.push_back(descriptors[i]);
     }
     return result;
-}
-
-void prune_across_middle_processing(std::vector<Label>& labels,
-                                    Fenwick2DMinimum& fenwick,
-                                    int remaining_weight) {
-    std::size_t write = 0;
-    std::size_t begin = 0;
-    while (begin < labels.size()) {
-        std::size_t end = begin + 1;
-        while (end < labels.size()
-               && labels[end].p_before == labels[begin].p_before) {
-            ++end;
-        }
-        fenwick.next_group();
-        for (std::size_t i = begin; i < end; ++i) {
-            const Label& label = labels[i];
-            i64 adjusted_cost = label.cost
-                - static_cast<i64>(label.p_middle) * remaining_weight;
-            if (fenwick.prefix_min(label.w_middle, label.w_after)
-                <= adjusted_cost) {
-                continue;
-            }
-            fenwick.update(label.w_middle, label.w_after, adjusted_cost);
-            labels[write++] = label;
-        }
-        begin = end;
-    }
-    labels.resize(write);
-}
-
-void prune_across_before_processing_equal_middle_weight(
-        std::vector<Label>& labels,
-        FenwickMinimum& fenwick,
-        int remaining_weight,
-        bool use_counting_sort = false,
-        int total_processing = 0,
-        int total_weight = 0) {
-    if (use_counting_sort) {
-        const std::size_t weight_range = static_cast<std::size_t>(total_weight) + 1;
-        const std::size_t key_count =
-            (static_cast<std::size_t>(total_processing) + 1) * weight_range;
-        std::vector<std::size_t> offsets(key_count + 1, 0);
-        for (const Label& label : labels) {
-            std::size_t key = static_cast<std::size_t>(label.p_middle)
-                    * weight_range + label.w_middle;
-            ++offsets[key + 1];
-        }
-        for (std::size_t key = 1; key < offsets.size(); ++key) {
-            offsets[key] += offsets[key - 1];
-        }
-        std::vector<Label> reordered(labels.size());
-        for (const Label& label : labels) {
-            std::size_t key = static_cast<std::size_t>(label.p_middle)
-                    * weight_range + label.w_middle;
-            reordered[offsets[key]++] = label;
-        }
-        labels.swap(reordered);
-    } else {
-        std::sort(labels.begin(), labels.end(), [](const Label& a, const Label& b) {
-            if (a.p_middle != b.p_middle) return a.p_middle < b.p_middle;
-            if (a.w_middle != b.w_middle) return a.w_middle < b.w_middle;
-            if (a.p_before != b.p_before) return a.p_before < b.p_before;
-            if (a.w_after != b.w_after) return a.w_after < b.w_after;
-            return a.cost < b.cost;
-        });
-    }
-
-    std::size_t write = 0;
-    std::size_t begin = 0;
-    while (begin < labels.size()) {
-        std::size_t end = begin + 1;
-        while (end < labels.size()
-               && labels[end].p_middle == labels[begin].p_middle
-               && labels[end].w_middle == labels[begin].w_middle) {
-            ++end;
-        }
-        fenwick.next_group();
-        for (std::size_t i = begin; i < end; ++i) {
-            const Label& label = labels[i];
-            i64 adjusted_cost = label.cost
-                - static_cast<i64>(label.p_before) * remaining_weight;
-            if (fenwick.prefix_min(label.w_after) <= adjusted_cost) continue;
-            fenwick.update(label.w_after, adjusted_cost);
-            labels[write++] = label;
-        }
-        begin = end;
-    }
-    labels.resize(write);
-    std::sort(labels.begin(), labels.end(), label_state_less);
-}
-
-void prune_across_before_processing_indexed(
-        std::vector<Label>& labels,
-        FenwickMinimum& fenwick,
-        int remaining_weight,
-        int total_processing,
-        int total_weight) {
-    const std::size_t weight_range = static_cast<std::size_t>(total_weight) + 1;
-    const std::size_t key_count =
-        (static_cast<std::size_t>(total_processing) + 1) * weight_range;
-    std::vector<std::size_t> offsets(key_count + 1, 0);
-    for (const Label& label : labels) {
-        std::size_t key = static_cast<std::size_t>(label.p_middle)
-                * weight_range + label.w_middle;
-        ++offsets[key + 1];
-    }
-    for (std::size_t key = 1; key < offsets.size(); ++key) {
-        offsets[key] += offsets[key - 1];
-    }
-    std::vector<std::size_t> order(labels.size());
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        std::size_t key = static_cast<std::size_t>(labels[i].p_middle)
-                * weight_range + labels[i].w_middle;
-        order[offsets[key]++] = i;
-    }
-
-    std::vector<char> keep(labels.size(), 1);
-    std::size_t begin = 0;
-    for (std::size_t key = 0; key < key_count; ++key) {
-        std::size_t end = offsets[key];
-        if (begin != end) {
-            fenwick.next_group();
-            for (std::size_t position = begin; position < end; ++position) {
-                std::size_t index = order[position];
-                const Label& label = labels[index];
-                i64 adjusted_cost = label.cost
-                    - static_cast<i64>(label.p_before) * remaining_weight;
-                if (fenwick.prefix_min(label.w_after) <= adjusted_cost) {
-                    keep[index] = 0;
-                } else {
-                    fenwick.update(label.w_after, adjusted_cost);
-                }
-            }
-        }
-        begin = end;
-    }
-    std::size_t write = 0;
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        if (keep[i]) labels[write++] = labels[i];
-    }
-    labels.resize(write);
-}
-
-void prune_across_before_and_middle_processing_naive(
-        std::vector<Label>& labels,
-        int remaining_weight) {
-    std::vector<char> dominated(labels.size(), 0);
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        i64 adjusted_i = labels[i].cost
-            - static_cast<i64>(labels[i].p_before + labels[i].p_middle)
-                * remaining_weight;
-        for (std::size_t q = 0; q < labels.size(); ++q) {
-            if (q == i) continue;
-            i64 adjusted_q = labels[q].cost
-                - static_cast<i64>(labels[q].p_before + labels[q].p_middle)
-                    * remaining_weight;
-            if (labels[q].p_before <= labels[i].p_before
-                && labels[q].p_middle <= labels[i].p_middle
-                && labels[q].w_middle <= labels[i].w_middle
-                && labels[q].w_after <= labels[i].w_after
-                && adjusted_q <= adjusted_i) {
-                dominated[i] = 1;
-                break;
-            }
-        }
-    }
-    std::size_t write = 0;
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        if (!dominated[i]) labels[write++] = labels[i];
-    }
-    labels.resize(write);
 }
 
 std::vector<std::size_t> select_group_labels(const std::vector<Label>& labels,
@@ -1156,14 +942,8 @@ std::vector<Descriptor> labeling_descriptors(const std::vector<Job>& jobs,
                                              std::size_t width = 0,
                                              int boundary_threads = 1,
                                              bool reverse_order = false,
-                                             bool use_cross_middle_dominance = false,
                                              bool use_descriptor_dominance = false,
                                              bool restrict_middle_to_resource_span = false,
-                                             bool use_cross_before_dominance = false,
-                                             bool use_full_processing_dominance = false,
-                                             bool use_ordinary_remaining_weight = false,
-                                             bool use_counting_cross_before = false,
-                                             bool use_indexed_cross_before = false,
                                              bool use_objective_aligned_dominance = false,
                                              const std::chrono::steady_clock::time_point*
                                                  deadline = nullptr,
@@ -1236,24 +1016,14 @@ std::vector<Descriptor> labeling_descriptors(const std::vector<Job>& jobs,
         std::vector<Label> objective_group;
         ObjectiveDominanceWorkspace objective_workspace;
         FenwickMinimum fenwick(total_weight);
-        FenwickMinimum before_fenwick(total_weight);
-        std::optional<Fenwick2DMinimum> cross_fenwick;
-        if (use_cross_middle_dominance && !reverse_order
-            && mode == DiagramMode::Exact) {
-            cross_fenwick.emplace(total_weight);
-        }
         int processed_p = 0;
         int processed_weight = 0;
-        int ordered_weight = total_weight - jobs[first].w;
-        if (last != first) ordered_weight -= jobs[last].w;
-        int remaining_ordinary_weight = 0;
         int remaining_resource_processing = 0;
         int remaining_middle_eligible_processing = 0;
         for (int index : ordered) {
             if (jobs[index].resource) {
                 remaining_resource_processing += jobs[index].p;
             } else {
-                remaining_ordinary_weight += jobs[index].w;
                 const bool may_enter_middle = !restrict_middle_to_resource_span
                     || !canonical_resource_order
                     || (wspt_rank[first] <= wspt_rank[index]
@@ -1275,8 +1045,6 @@ std::vector<Descriptor> labeling_descriptors(const std::vector<Job>& jobs,
                     && wspt_rank[index] <= wspt_rank[last]);
             const int next_remaining_resource_processing
                 = remaining_resource_processing - (job.resource ? job.p : 0);
-            const int next_remaining_ordinary_weight
-                = remaining_ordinary_weight - (job.resource ? 0 : job.w);
             const int next_remaining_middle_eligible_processing
                 = remaining_middle_eligible_processing
                   - (!job.resource && allow_middle ? job.p : 0);
@@ -1306,7 +1074,6 @@ std::vector<Descriptor> labeling_descriptors(const std::vector<Job>& jobs,
             processed_p += job.p;
             processed_weight += job.w;
             remaining_resource_processing = next_remaining_resource_processing;
-            remaining_ordinary_weight = next_remaining_ordinary_weight;
             remaining_middle_eligible_processing
                 = next_remaining_middle_eligible_processing;
             boundary_result.generated += layer_generated;
@@ -1334,33 +1101,6 @@ std::vector<Descriptor> labeling_descriptors(const std::vector<Job>& jobs,
                 && use_objective_aligned_dominance) {
                 current = truncate_label_groups(current, mode, width,
                                                 total_processing);
-            }
-            int middle_compensation_weight = use_ordinary_remaining_weight
-                ? remaining_ordinary_weight
-                : ordered_weight - processed_weight;
-            int before_compensation_weight = use_ordinary_remaining_weight
-                ? remaining_ordinary_weight : ordered_weight - processed_weight;
-            int total_remaining_weight = ordered_weight - processed_weight;
-            if (cross_fenwick) {
-                prune_across_middle_processing(
-                    current, *cross_fenwick, middle_compensation_weight);
-            }
-            if (use_cross_before_dominance && !reverse_order
-                && mode == DiagramMode::Exact) {
-                if (use_indexed_cross_before) {
-                    prune_across_before_processing_indexed(
-                        current, before_fenwick, before_compensation_weight,
-                        total_processing, total_weight);
-                } else {
-                    prune_across_before_processing_equal_middle_weight(
-                        current, before_fenwick, before_compensation_weight,
-                        use_counting_cross_before, total_processing, total_weight);
-                }
-            }
-            if (use_full_processing_dominance && !reverse_order
-                && mode == DiagramMode::Exact) {
-                prune_across_before_and_middle_processing_naive(
-                    current, total_remaining_weight);
             }
             boundary_result.peak = std::max(boundary_result.peak, current.size());
         }
@@ -1503,14 +1243,8 @@ std::vector<Descriptor> strongest_exact_descriptors(
         0,
         1,
         false,               // forward WSPT recursion
-        false,               // omit the slower cross-middle-processing pass
         true,                // terminal-vector dominance
         true,                // restrict M to the WSPT span of the boundaries
-        false,               // omit the slower cross-before-processing pass
-        false,               // omit the quadratic diagnostic dominance pass
-        true,                // retain the exact remaining-job calculations
-        false,               // comparison-sort implementation is not selected
-        false,               // indexed processing-total pass is not selected
         true,                // objective-aligned equal-total dominance
         deadline,
         false,               // subsumed equal-total dominance pass
@@ -1861,14 +1595,6 @@ void validate() {
                 print_instance(jobs);
                 std::exit(2);
             }
-            std::vector<Descriptor> cross = labeling_descriptors(
-                jobs, nullptr, false, DiagramMode::Exact, 0, 1, false, true);
-            if (!compare_cumulative_frontiers(jobs, exact, cross, &message)) {
-                std::cerr << "Exhaustive cross-middle validation failed: "
-                          << message << '\n';
-                print_instance(jobs);
-                std::exit(2);
-            }
             std::vector<Descriptor> envelope =
                 prune_descriptor_envelopes(structured);
             if (!compare_cumulative_frontiers(jobs, exact, envelope, &message)) {
@@ -1878,7 +1604,7 @@ void validate() {
                 std::exit(2);
             }
             std::vector<Descriptor> combined = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true, true);
+                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true);
             if (!compare_cumulative_frontiers(jobs, exact, combined, &message)) {
                 std::cerr << "Exhaustive combined-method validation failed: "
                           << message << '\n';
@@ -1937,14 +1663,6 @@ void validate() {
                 print_instance(jobs);
                 std::exit(2);
             }
-            std::vector<Descriptor> cross = labeling_descriptors(
-                jobs, nullptr, false, DiagramMode::Exact, 0, 1, false, true);
-            if (!compare_cumulative_frontiers(jobs, structured, cross, &message)) {
-                std::cerr << "Cross-middle validation failed for n=" << n
-                          << " rep=" << rep << ": " << message << '\n';
-                print_instance(jobs);
-                std::exit(2);
-            }
             std::vector<Descriptor> envelope =
                 prune_descriptor_envelopes(structured);
             if (!compare_cumulative_frontiers(jobs, structured, envelope, &message)) {
@@ -1954,7 +1672,7 @@ void validate() {
                 std::exit(2);
             }
             std::vector<Descriptor> combined = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true, true);
+                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true);
             if (!compare_cumulative_frontiers(jobs, structured, combined, &message)) {
                 std::cerr << "Combined-method validation failed for n=" << n
                           << " rep=" << rep << ": " << message << '\n';
@@ -2188,9 +1906,7 @@ std::vector<i64> recourse_table(const std::vector<Descriptor>& descriptors,
 }
 
 void stochastic_experiment(const std::string& output,
-                           bool canonical_boundaries = false,
-                           bool use_cross_middle_dominance = false,
-                           bool use_descriptor_dominance = false) {
+                           bool canonical_boundaries = false) {
     std::ofstream out(output);
     out << "rep,scenarios,committed,potential,resource_share,pmax,opt_s,opt_d,objective,"
            "frontier_seconds,table_seconds,total_seconds,peak_states,max_descriptors,"
@@ -2238,16 +1954,11 @@ void stochastic_experiment(const std::string& output,
                 futures.reserve(scenario_jobs.size());
                 for (const std::vector<Job>& jobs : scenario_jobs) {
                     futures.push_back(std::async(std::launch::async,
-                                                 [jobs, canonical_boundaries,
-                                                  use_cross_middle_dominance,
-                                                  use_descriptor_dominance]() {
+                                                 [jobs, canonical_boundaries]() {
                         ScenarioResult result;
                         for (const Job& job : jobs) result.ptotal += job.p;
                         result.descriptors = labeling_descriptors(
-                            jobs, &result.stats, canonical_boundaries,
-                            DiagramMode::Exact, 0, 1, false,
-                            use_cross_middle_dominance,
-                            use_descriptor_dominance);
+                            jobs, &result.stats, canonical_boundaries);
                         return result;
                     }));
                 }
@@ -2431,8 +2142,7 @@ void order_stress_case(int n, int seed, int scale, double resource_share) {
 }
 
 void canonical_stress_case(int n, int seed, int scale, double resource_share,
-                           bool compare_full, bool use_cross_middle_dominance,
-                           bool use_descriptor_dominance) {
+                           bool compare_full, bool use_descriptor_dominance) {
     std::vector<Job> jobs = random_instance(n, seed, scale, resource_share);
     int ptotal = 0;
     int nr = 0;
@@ -2443,7 +2153,7 @@ void canonical_stress_case(int n, int seed, int scale, double resource_share,
     LabelStats canonical_stats;
     std::vector<Descriptor> canonical = labeling_descriptors(
         jobs, &canonical_stats, true, DiagramMode::Exact, 0, 1, false,
-        use_cross_middle_dominance, use_descriptor_dominance);
+        use_descriptor_dominance);
     double full_seconds = -1.0;
     std::size_t full_generated = 0;
     if (compare_full) {
@@ -2466,92 +2176,12 @@ void canonical_stress_case(int n, int seed, int scale, double resource_share,
               << " peak=" << canonical_stats.peak_states
               << " descriptors=" << canonical.size()
               << " compared=" << compare_full
-              << " cross=" << use_cross_middle_dominance
               << " envelope=" << use_descriptor_dominance
               << " full_seconds=" << full_seconds
               << " full_generated=" << full_generated << '\n';
 }
 
-void colleague_refinement_case(int n, int seed, int scale,
-                               double resource_share) {
-    std::vector<Job> jobs = random_instance(n, seed, scale, resource_share);
-    int ptotal = 0;
-    int nr = 0;
-    for (const Job& job : jobs) {
-        ptotal += job.p;
-        nr += job.resource;
-    }
-
-    auto solve = [&](bool restrict_middle, bool cross_before, LabelStats& stats) {
-        return labeling_descriptors(jobs, &stats, true, DiagramMode::Exact, 0, 1,
-                                    false, false, false, restrict_middle,
-                                    cross_before);
-    };
-    LabelStats base_stats;
-    LabelStats span_stats;
-    LabelStats before_stats;
-    LabelStats combined_stats;
-    std::vector<Descriptor> base = solve(false, false, base_stats);
-    std::vector<Descriptor> span = solve(true, false, span_stats);
-    std::vector<Descriptor> before = solve(false, true, before_stats);
-    std::vector<Descriptor> combined = solve(true, true, combined_stats);
-
-    std::string message;
-    for (const auto& candidate : {std::cref(span), std::cref(before),
-                                  std::cref(combined)}) {
-        if (!compare_cumulative_frontiers(jobs, base, candidate.get(), &message)) {
-            throw std::runtime_error("Colleague-refinement mismatch: " + message);
-        }
-    }
-
-    auto print_stats = [](const char* name, const LabelStats& stats) {
-        std::cout << ' ' << name << "_seconds=" << std::fixed
-                  << std::setprecision(8) << stats.seconds
-                  << ' ' << name << "_generated=" << stats.generated_states
-                  << ' ' << name << "_peak=" << stats.peak_states;
-    };
-    std::cout << "colleague n=" << n << " seed=" << seed << " scale=" << scale
-              << " share=" << resource_share << " P=" << ptotal << " nr=" << nr;
-    print_stats("base", base_stats);
-    print_stats("span", span_stats);
-    print_stats("before", before_stats);
-    print_stats("combined", combined_stats);
-    std::cout << '\n';
-}
-
-void cross_before_followup_case(int n, int seed, int scale,
-                                double resource_share, int variant) {
-    std::vector<Job> jobs = random_instance(n, seed, scale, resource_share);
-    int ptotal = 0;
-    int wtotal = 0;
-    int nr = 0;
-    for (const Job& job : jobs) {
-        ptotal += job.p;
-        wtotal += job.w;
-        nr += job.resource;
-    }
-    const bool use_cross_before = variant != 0;
-    const bool use_ordinary_weight = variant >= 2;
-    const bool use_counting_sort = variant == 3;
-    const bool use_indexed_sort = variant >= 4;
-    const bool use_middle_rule = variant >= 5;
-    const bool use_objective_aligned = variant >= 6;
-    LabelStats stats;
-    std::vector<Descriptor> result = labeling_descriptors(
-        jobs, &stats, true, DiagramMode::Exact, 0, 1, false, use_middle_rule, false,
-        true, use_cross_before, false, use_ordinary_weight, use_counting_sort,
-        use_indexed_sort, use_objective_aligned);
-    std::cout << "crosspb_followup n=" << n << " seed=" << seed
-              << " scale=" << scale << " share=" << resource_share
-              << " variant=" << variant << " P=" << ptotal << " W=" << wtotal
-              << " nr=" << nr << " seconds=" << std::fixed
-              << std::setprecision(8) << stats.seconds
-              << " generated=" << stats.generated_states
-              << " peak=" << stats.peak_states
-              << " descriptors=" << result.size() << '\n';
-}
-
-void validate_colleague_refinements() {
+void validate_production_labeling() {
     constexpr int n = 5;
     int data_patterns = 1;
     for (int j = 0; j < n; ++j) data_patterns *= 4;
@@ -2569,56 +2199,25 @@ void validate_colleague_refinements() {
             for (int j = 0; j < n; ++j) jobs[j].resource = mask & (1 << j);
             std::vector<Descriptor> exact = permutation_descriptors(jobs);
             std::vector<Descriptor> span = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, false);
-            std::vector<Descriptor> before = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, false, true);
-            std::vector<Descriptor> combined = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, true);
-            std::vector<Descriptor> full_rule = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, false, true);
-            std::vector<Descriptor> tight_before = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, true, false, true, false);
-            std::vector<Descriptor> counting_before = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, true, false, true, true);
-            std::vector<Descriptor> indexed_before = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, true, false, true, false, true);
-            std::vector<Descriptor> strongest = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true,
-                false, true, true, false, true, false, true);
-            std::vector<Descriptor> objective_aligned = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, true,
-                false, true, true, false, true, false, true, true);
+                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false,
+                false, true);
             std::vector<Descriptor> objective_only = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, false, false, true, false, false, true, nullptr,
+                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false,
+                false, true, true, nullptr,
                 false);
             std::vector<Descriptor> direct_objective = labeling_descriptors(
-                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false, false,
-                false, true, false, false, true, false, false, true, nullptr,
+                jobs, nullptr, true, DiagramMode::Exact, 0, 1, false,
+                false, true, true, nullptr,
                 false, false);
             std::vector<Descriptor> production = strongest_exact_descriptors(jobs);
             std::string message;
-            for (const auto& candidate : {std::cref(span), std::cref(before),
-                                          std::cref(combined),
-                                          std::cref(full_rule),
-                                          std::cref(tight_before),
-                                          std::cref(counting_before),
-                                          std::cref(indexed_before),
-                                          std::cref(strongest),
-                                          std::cref(objective_aligned),
+            for (const auto& candidate : {std::cref(span),
                                           std::cref(objective_only),
                                           std::cref(direct_objective),
                                           std::cref(production)}) {
                 if (!compare_cumulative_frontiers(jobs, exact, candidate.get(),
                                                   &message)) {
-                    std::cerr << "Colleague-refinement validation failed: "
+                    std::cerr << "Production labeling validation failed: "
                               << message << '\n';
                     print_instance(jobs);
                     std::exit(2);
@@ -2627,7 +2226,7 @@ void validate_colleague_refinements() {
             ++tested;
         }
     }
-    std::cout << "colleague_refinement_validation_passed instances=" << tested
+    std::cout << "production_labeling_validation_passed instances=" << tested
               << '\n';
 }
 
@@ -2655,19 +2254,17 @@ void diagram_refinement_experiment(const std::string& output) {
             LabelStats exact_stats;
             std::vector<Descriptor> exact = labeling_descriptors(
                 jobs, &exact_stats, true, DiagramMode::Exact, 0, 1, false,
-                true, true, true, true, false, true, false, true, true);
+                true, true, true);
             std::vector<i64> exact_table = complete_recourse_table(exact, ptotal, mu);
             for (std::size_t width : {1u, 2u, 4u, 8u, 16u, 32u, 64u}) {
                 LabelStats restricted_stats;
                 LabelStats relaxed_stats;
                 std::vector<Descriptor> restricted = labeling_descriptors(
                     jobs, &restricted_stats, true, DiagramMode::Restricted, width,
-                    1, false, false, true, true, false, false, false, false,
-                    false, true);
+                    1, false, true, true, true);
                 std::vector<Descriptor> relaxed = labeling_descriptors(
                     jobs, &relaxed_stats, true, DiagramMode::Relaxed, width,
-                    1, false, false, true, true, false, false, false, false,
-                    false, true);
+                    1, false, true, true, true);
                 std::vector<i64> upper = complete_recourse_table(restricted, ptotal, mu);
                 std::vector<i64> lower = complete_recourse_table(relaxed, ptotal, mu);
                 double gap_sum = 0.0;
@@ -2733,7 +2330,7 @@ void single_resource_comparison(int n, int seed, int scale) {
     LabelStats specialized_stats;
     const std::vector<Descriptor> generic = labeling_descriptors(
         jobs, &generic_stats, true, DiagramMode::Exact, 0, 1, false,
-        true, true, true, true, false, true, false, true, true);
+        true, true, true);
     const std::vector<Descriptor> specialized =
         single_resource_descriptors(jobs, &specialized_stats);
     std::string message;
@@ -2784,7 +2381,7 @@ void correlation_stress_case(int n, int seed, int scale, double resource_share,
     LabelStats stats;
     const std::vector<Descriptor> descriptors = labeling_descriptors(
         jobs, &stats, true, DiagramMode::Exact, 0, 1, false,
-        true, true, true, true, false, true, false, true, true);
+        true, true, true);
     std::cout << "correlation_stress n=" << n << " seed=" << seed
               << " scale=" << scale << " share=" << resource_share
               << " correlation=" << correlation
@@ -2817,10 +2414,6 @@ int main(int argc, char** argv) {
             std::string output = argc >= 3
                 ? argv[2] : "frontier_stochastic_canonical_results.csv";
             stochastic_experiment(output, true);
-        } else if (mode == "stochastic_best") {
-            std::string output = argc >= 3
-                ? argv[2] : "frontier_stochastic_best_results.csv";
-            stochastic_experiment(output, true, true, true);
         } else if (mode == "compare") {
             std::string output = argc >= 3 ? argv[2] : "frontier_comparison_results.csv";
             formulation_comparison_data(output);
@@ -2869,37 +2462,20 @@ int main(int argc, char** argv) {
             order_stress_case(std::stoi(argv[2]), std::stoi(argv[3]),
                               std::stoi(argv[4]), std::stod(argv[5]));
         } else if (mode == "canonical") {
-            if (argc < 6 || argc > 9) {
+            if (argc < 6 || argc > 8) {
                 throw std::runtime_error(
                     "canonical mode requires: n seed processing_scale resource_share "
-                    "[compare_full] [cross_middle] [descriptor_dominance]");
+                    "[compare_full] [descriptor_dominance]");
             }
             canonical_stress_case(std::stoi(argv[2]), std::stoi(argv[3]),
                                   std::stoi(argv[4]), std::stod(argv[5]),
                                   argc >= 7 && std::stoi(argv[6]) != 0,
-                                  argc >= 8 && std::stoi(argv[7]) != 0,
-                                  argc >= 9 && std::stoi(argv[8]) != 0);
-        } else if (mode == "validate_colleague") {
-            validate_colleague_refinements();
-        } else if (mode == "colleague") {
-            if (argc != 6) {
-                throw std::runtime_error(
-                    "colleague mode requires: n seed processing_scale resource_share");
-            }
-            colleague_refinement_case(std::stoi(argv[2]), std::stoi(argv[3]),
-                                      std::stoi(argv[4]), std::stod(argv[5]));
-        } else if (mode == "crosspb_followup") {
-            if (argc != 7) {
-                throw std::runtime_error(
-                    "crosspb_followup mode requires: n seed processing_scale "
-                    "resource_share variant");
-            }
-            cross_before_followup_case(
-                std::stoi(argv[2]), std::stoi(argv[3]), std::stoi(argv[4]),
-                std::stod(argv[5]), std::stoi(argv[6]));
+                                  argc >= 8 && std::stoi(argv[7]) != 0);
+        } else if (mode == "validate_production") {
+            validate_production_labeling();
         } else {
             std::cerr << "Usage: frontier_labeling "
-                         "[validate|validate_colleague|validate_single_resource|single_resource_compare|correlation_stress|colleague|crosspb_followup|hull_counterexample|benchmark|bounds|stochastic|stochastic_canonical|stochastic_best|compare|diagrams|single|shared|order|canonical] "
+                         "[validate|validate_production|validate_single_resource|single_resource_compare|correlation_stress|hull_counterexample|benchmark|bounds|stochastic|stochastic_canonical|compare|diagrams|single|shared|order|canonical] "
                          "[output.csv]\n";
             return 1;
         }

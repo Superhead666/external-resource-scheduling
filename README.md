@@ -36,8 +36,6 @@ The Makefile defaults match the original macOS ARM installations. If the install
 
 Each manifest links a run record to the original solver input in its `instances/` directory. The baseline comparison matches records by seed and scenario count. Its reported gaps use the larger of the archived solver bound and the empty-set lower bound, as in the manuscript. Reruns can vary in runtime and in the bounds reached by the time limit.
 
-The experimental dominance passes across processing totals in `src/frontier_labeling_core.inc` are disabled in all reported runs.
-
 ## Rerun the experiments
 
 For an exact replay of the saved instance data, pass a manifest to `run_suite.py`. For example, the following reruns the first scalability instance. Remove `--max-instances 1` to run the full scalability set.

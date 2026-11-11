@@ -427,15 +427,13 @@ ScenarioOutput solve_scenario(
     } else if (variant == ComponentVariant::LabelDominanceBatched) {
         descriptors = labeling_descriptors(
             jobs, &output.statistics,
-            true, DiagramMode::Exact, 0, 1, false, false,
-            false, true, false, false, true, false, false, true,
-            &deadline, false, false, false);
+            true, DiagramMode::Exact, 0, 1, false,
+            false, true, true, &deadline, false, false, false);
     } else if (variant == ComponentVariant::TerminalDominanceBatched) {
         descriptors = labeling_descriptors(
             jobs, &output.statistics,
-            true, DiagramMode::Exact, 0, 1, false, false,
-            true, true, false, false, true, false, false, false,
-            &deadline, false, true, true);
+            true, DiagramMode::Exact, 0, 1, false,
+            true, true, false, &deadline, false, true, true);
     } else {
         descriptors = strongest_exact_descriptors(
             jobs, &output.statistics, &deadline);

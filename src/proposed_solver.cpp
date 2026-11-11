@@ -139,7 +139,7 @@ ScenarioOutput solve_scenario_diagram(
     // and WSPT-span results, which do not depend on the diagram width.
     const std::vector<Descriptor> descriptors = labeling_descriptors(
         jobs, &output.statistics, true, mode, width, 1, false,
-        false, true, true, false, false, false, false, false, true, &deadline);
+        true, true, true, &deadline);
     output.vectors = descriptors.size();
     const auto table_start = std::chrono::steady_clock::now();
     output.table = rectangular_recourse_table(
